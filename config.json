@@ -1,0 +1,27 @@
+{
+    "ContaTwitter":{
+        "Acess_Token" : "2588737064-Rrf6bipN6ScsQKa0PLJNdItgYKecw0hiOS9RycG",
+        "Acess_Secret" : "pYgU0ofmaVAefXgG8taK04T9JMv0KRKNXvjbtPMGDH4Sv",
+        "Consumer_Key" : "rFu2LTWV4fgxiIsLIS4rkIrn9",
+        "Consumer_Secret" : "SClUZ8dnmMK12LifCReZEcEZwBgL7R4QpuIT3fHVV0VE7VCu7S",
+        "Bearer_Token":""
+    },
+    "SparkStream":{
+      "IP" : "localhost",
+      "Porta" : 9009
+    },
+    "Spark":{
+      "Local" : true,
+      "Master_IP": "127.0.0.1",
+      "Master_Porta" : 4455
+    },
+    "WebServer":{
+    "SSL" : false,
+    "IP" : "localhost",
+    "Porta" : 5001
+    },
+    "Idioma" : "pt",
+    "Local_Busca" : "-74.45,-34.2,-34.46,5.31",
+    "Palavras_Chave":"Covid,covid,COVID,omicron,Omicron,OMICRON,Saude,SAUDE,saude,Saúde,SAÚDE,saúde",
+    "Filtrar": true
+}
