@@ -9,16 +9,16 @@ Foi usado o __Tweepy__ para a integração com a api do tweeter obtendo os dados
 
 ## Executando
 - Execute os seguintes `.py`:
-  - sparkstreams_app.py
-  - twitterfetch_app.py
+  - CapturaTweet.py
+  - SparkStream.py
   - app.py
 
 - Abra o arquivo `chart.html`
 
 ```
-    python3 sparkstreams_app.py
+    python3 CapturaTweet.py
 
-    twitterfetch_app.py
+    python3 SparkStream.py
 
-    app.py
+    python3 app.py
 ```
