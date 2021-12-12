@@ -2,6 +2,7 @@ import sys
 from datetime import datetime
 import requests
 import json
+from marshmallow import Schema, fields
 
 from pyspark import SparkConf, SparkContext
 from pyspark.streaming import StreamingContext
@@ -17,9 +18,10 @@ def Config():
 sparkConf = Config()['Spark']
 
 if(sparkConf['Local']):
-    spc = SparkContext("local[2]", "PAINELTWITTER")
+    localStr = 'local[' + str(sparkConf['Instacia_Local']) + ']'
+    spc = SparkContext(localStr, sparkConf['AppName'])
 else:
-    spc = SparkContext(master=(sparkConf['Master_IP']+':'+sparkConf['Master_Porta']),appName="PAINELTWITTER")
+    spc = SparkContext(master=(sparkConf['Master_IP']+':'+sparkConf['Master_Porta']),appName=sparkConf['AppName'])
 spc.setLogLevel("ERROR")
 
 spsc = StreamingContext(spc, 2)
@@ -31,16 +33,9 @@ dataStream = spsc.socketTextStream(streamConf['IP'], streamConf['Porta'])
 
 
 def aggr_tags_count(new_values, total_sum):
-    '''
-    The function 'aggr_tags_count' aggregates and sum up the hashtag counts
-    collected for each category
-    '''
     return sum(new_values) + (total_sum or 0)
 
 def get_sqlcontext_instance(spark_context):
-    '''
-    Create sql context object globally (singleton object)
-    '''
     if 'sqlContextSingletonInstance' not in globals():
         globals()['sqlContextSingletonInstance'] = SQLContext(spark_context)
     return globals()['sqlContextSingletonInstance']
@@ -53,67 +48,70 @@ def getUrl():
     else:
         url+= 'http://'
     url+= (webServerConf['IP'] + ':' + str(webServerConf['Porta']) + '/')
-    print(url)
+    #print(url)
     return url
 url = getUrl()
 
-def send_df_to_dashboard(df):
-    # extract the hashtags from dataframe and convert them into array
-    print(df.select("hashtag").collect())
-    print(df.select("count").collect())
-    top_tags = [str(h[0]) for h in df.select("hashtag").collect()]
-    # extract the counts from dataframe and convert them into array
-    #tags_count = [p.count for p in df.select("count").collect()]
-    tags_count = [c[0] for c in df.select("count").collect()]
-    # initialize and send the data through REST API
-    request_data = {'label': str(top_tags), 'data': str(tags_count)}
-    print(request_data)
-    response = requests.post(url + 'updateData', data=request_data)
+class Mencao:
+    def __init__(self, t, c):
+        self.text = t
+        self.count = c
+class ObjectSchema(Schema):
+    text = fields.Str()
+    count = fields.Str()
 
-def rdd_process(time, rdd):
-    print("~~~~~~~~~~~~~~ %s ~~~~~~~~~~~~~~" % str(time))
+
+def enviarParaPainel(df, df2):
+    #print(df.select("hashtag").collect())
+    #print(df.select("count").collect())
+    # print(df)
+    print(df2)
+    if((df is not None) and (df2 is not None)):
+        tags = [str(h[0]) for h in df.select("mencao").collect()]
+        tagsCount = [c[0] for c in df.select("count").collect()]
+        df2Rows = df2.collect()
+        listMencoes = [(Mencao(row[0], str(row[1]))) for row in df2Rows]
+        #print(listMencoes)
+        objMencao = ObjectSchema()
+        palavrasMerge = objMencao.dumps(listMencoes, many=True)
+        #print(palavrasMerge)
+        request_data = {'label': str(tags), 'data': str(tagsCount), 'palavrasTup' : str(palavrasMerge) }
+        #print(request_data)
+        response = requests.post(url + 'atualizarPainel', data=request_data)
+        print('Enviando para PAINEL request_data: %s ' % request_data)
+
+hashtagsDf = None
+mencaoDf = None
+
+
+def ProcessarRDD(time, rdd2):
     try:
-        # Get spark sql singleton context from the current context
-        print(rdd)
-        sql_context = get_sqlcontext_instance(rdd.context)
-        # convert the RDD to Row RDD
-        row_rdd = rdd.map(lambda w: Row(hashtag=w[0], count=w[1], timestamp=datetime.now().strftime('%Y/%m/%d %H:%M:%S')))
-        if row_rdd.isEmpty():
-            print('RDD is empty')
-        else:
-            # create a DF from the Row RDD
-            hashtags_df = sql_context.createDataFrame(row_rdd)
-            # Register the dataframe as table
-            hashtags_df.registerTempTable("hashtags")
-            # get the top 10 hashtags from the table using SQL and print them
-            hashtag_counts_dataf = sql_context.sql("select hashtag, count, timestamp  from hashtags order by count desc limit 10")
+        sql_context2 = get_sqlcontext_instance(rdd2.context)
+        row_rdd = rdd2.map(lambda w: Row(mencao=w[0], count=w[1], timestamp=datetime.now().strftime('%Y/%m/%d %H:%M:%S')))
+        if (row_rdd.isEmpty() == False):
+            mencoes_df = sql_context2.createDataFrame(row_rdd)
+            mencoes_df.registerTempTable("mencoes")
+            mencoes_counts_dataf = sql_context2.sql("select mencao as mencao, count as count from mencoes order by count desc limit 500")
+            mencoes_counts_dataf.show()
+            hashtag_counts_dataf = sql_context2.sql("select mencao, count, timestamp  from mencoes where mencao like '#%' order by count desc limit 10")
             hashtag_counts_dataf.show()
-            # call this method to send them to elasticsearch
-            #send_dataframe_to_elasticsearch(hashtags_df)
-            send_df_to_dashboard(hashtag_counts_dataf)
-            #print("teste")
+            hashtagsDf = hashtag_counts_dataf
+            mencaoDf = mencoes_counts_dataf
+            enviarParaPainel(hashtagsDf, mencaoDf)
+
     except:
         e = sys.exc_info()
-        print("Error: %s" % e[0])
-        print("Erro2: %s" % e[1])
+        print("Erro processando rdd2: %s" % e[0])
         print(e)
-        
-
-# split each tweet into individual words to create category
+sys.setrecursionlimit(1500)
+print(sys.getrecursionlimit())
 words = dataStream.flatMap(lambda line: line.split(" "))
 words.pprint()
-# filter the words to get only hashtags from tweets, then to map each hashtag to be paired of with (hashtag,1)
-hashtags = words.filter(lambda w: '#' in w).map(lambda x: (x, 1))
-print("hashtags: ")
-hashtags.pprint()
-# Sum up each of the count of hashtag to its last count
-tags_totals = hashtags.updateStateByKey(aggr_tags_count)
-print("tags_totals")
-tags_totals.pprint()
-# Perform processing for each RDD generated in each interval
-tags_totals.foreachRDD(rdd_process)
 
-# start the streaming computation
+wordsMap = words.map(lambda x: (x, 1))
+wordsReduce = wordsMap.filter(lambda x: ' ' not in x).reduceByKey(lambda x,y: x+y )
+words_total = wordsReduce.updateStateByKey(aggr_tags_count)
+
+words_total.foreachRDD(ProcessarRDD)
 spsc.start()
-# wait for the streaming to finish
 spsc.awaitTermination()

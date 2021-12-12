@@ -11,7 +11,9 @@
       "Porta" : 9009
     },
     "Spark":{
+      "AppName" : "PAINELTWITTER",
       "Local" : true,
+      "Instacia_Local": 2,
       "Master_IP": "127.0.0.1",
       "Master_Porta" : 4455
     },
